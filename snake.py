@@ -1,224 +1,215 @@
-import pygame
+import tkinter as tk
+from tkinter import messagebox
 import random
-import time
 
-pygame.init()
+WIDTH, HEIGHT = 600, 400
+BLOCK_SIZE = 20
+MOVE_DELAY = 120
 
-width, height = 600, 400
-block_size = 10
-font_style = pygame.font.SysFont("comicsansms", 20)
-button_font = pygame.font.SysFont("comicsansms", 30)
+COLORS = {
+    "Стандартный": "green",
+    "Инь": "black",
+    "Янь": "white",
+    "Инь-Янь": ["black", "white"],
+}
 
-red = (255, 0, 0)
-black = (0, 0, 0)
-white = (255, 255, 255)
-blue = (50, 153, 213)
-yellow_light = (255, 255, 153)
-yellow_medium = (255, 204, 102)
-dark_green = (0, 100, 0)
-rainbow = [(255, 0, 0), (255, 127, 0), (255, 255, 0), (0, 255, 0), (0, 0, 255), (75, 0, 130), (148, 0, 211)]
-yin_color = (0, 0, 0)
-yang_color = (255, 255, 255)
-
-snake_color = dark_green
 score = 0
-yin_unlocked = False
-yang_unlocked = False
+unlocked_skins = {"Стандартный": True, "Инь": False, "Янь": False, "Инь-Янь": False}
+selected_skin = "Стандартный"
 
-screen = pygame.display.set_mode((width, height))
-pygame.display.set_caption('Змейка ГыГы')
+snake = []
+snake_dir = "Right"
+food = None
+game_running = False
 
+root = tk.Tk()
+root.title("Змейка")
 
-def draw_chess_board():
-    for row in range(height // block_size):
-        for col in range(width // block_size):
-            color = yellow_light if (row + col) % 2 == 0 else yellow_medium
-            pygame.draw.rect(screen, color, [col * block_size, row * block_size, block_size, block_size])
+canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg="white")
+canvas.pack()
 
+buttons = []
 
-def message(msg, font, color, center):
-    mesg = font.render(msg, True, color)
-    text_rect = mesg.get_rect(center=center)
-    screen.blit(mesg, text_rect)
+def draw_checkered_background():
+    canvas.delete("bg")
+    for y in range(0, HEIGHT, BLOCK_SIZE):
+        for x in range(0, WIDTH, BLOCK_SIZE):
+            fill = "#FFEBCC" if (x // BLOCK_SIZE + y // BLOCK_SIZE) % 2 == 0 else "#FFD699"
+            canvas.create_rectangle(x, y, x + BLOCK_SIZE, y + BLOCK_SIZE, fill=fill, outline="", tags="bg")
 
+def clear_buttons():
+    global buttons
+    for btn in buttons:
+        canvas.delete(btn)
+    buttons = []
 
-def show_score():
-    score_text = font_style.render(f"Очки: {score}", True, black)
-    screen.blit(score_text, (10, 10))
+def show_main_menu():
+    canvas.delete("all")
+    draw_checkered_background()
+    clear_buttons()
+    draw_score()
 
+    def btn(text, y, cmd):
+        b = canvas.create_rectangle(200, y, 400, y+40, fill="lightgray", tags="button")
+        t = canvas.create_text(300, y+20, text=text, fill="black", font=("Arial", 14), tags="button")
+        canvas.tag_bind(b, "<Button-1>", lambda e: cmd())
+        canvas.tag_bind(t, "<Button-1>", lambda e: cmd())
+        buttons.extend([b, t])
 
-def main_menu():
-    print("Главное меню запущено.")
-    while True:
-        screen.fill(blue)
-        message("ГыГы Змейка", button_font, white, (width / 2, height / 4))
-        show_score()
-        pygame.draw.rect(screen, white, (width / 3, height / 2 - 30, 150, 50))
-        pygame.draw.rect(screen, white, (width / 3, height / 2 + 50, 150, 50))
-        message("Играть", font_style, black, (width / 3 + 75, height / 2 - 5))
-        message("Магазин", font_style, black, (width / 3 + 75, height / 2 + 75))
-        pygame.display.update()
+    btn("Играть", 100, start_game)
+    btn("Магазин", 160, show_shop)
+    btn("Выбор цвета", 220, show_color_select)
+    btn("Достижения", 280, show_achievements)
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                x, y = event.pos
-                if width / 3 <= x <= width / 3 + 150:
-                    if height / 2 - 30 <= y <= height / 2 + 20:
-                        print("Выбор: Играть.")
-                        return "game"
-                    elif height / 2 + 50 <= y <= height / 2 + 100:
-                        print("Выбор: Магазин.")
-                        return "shop"
+def draw_score():
+    canvas.delete("score")
+    canvas.create_text(10, 10, anchor="nw", text=f"Очки: {score}", font=("Arial", 12, "bold"), tags="score")
 
+def show_shop():
+    canvas.delete("all")
+    draw_checkered_background()
+    clear_buttons()
+    draw_score()
 
-def shop():
-    global snake_color, score, yin_unlocked, yang_unlocked
-    print("Магазин запущен.")
-    while True:
-        screen.fill(blue)
-        message("МАГАЗИН", button_font, white, (width / 2, 40))
-        show_score()
+    canvas.create_text(300, 30, text="🛍 Магазин", font=("Arial", 18, "bold"))
 
-        pygame.draw.rect(screen, dark_green, (width / 3, height / 2 - 120, 150, 50))
-        pygame.draw.rect(screen, black, (width / 3, height / 2 - 60, 150, 50))
-        pygame.draw.rect(screen, white, (width / 3, height / 2, 150, 50))
-        pygame.draw.rect(screen, (128, 128, 128), (width / 3, height / 2 + 60, 150, 50))
-        pygame.draw.rect(screen, rainbow[0], (width / 3, height / 2 + 120, 150, 50))
-
-        if snake_color == dark_green:
-            message("Используется", font_style, white, (width / 3 + 75, height / 2 - 95))
-        else:
-            message("Бесплатно", font_style, white, (width / 3 + 75, height / 2 - 95))
-
-        if snake_color == yin_color:
-            message("Используется", font_style, white, (width / 3 + 75, height / 2 - 35))
-        else:
-            message("Инь (25)", font_style, white, (width / 3 + 75, height / 2 - 35))
-
-        if snake_color == yang_color:
-            message("Используется", font_style, black, (width / 3 + 75, height / 2 + 25))
-        else:
-            message("Янь (25)", font_style, black, (width / 3 + 75, height / 2 + 25))
-
-        if snake_color == rainbow:
-            message("Используется", font_style, white, (width / 3 + 75, height / 2 + 145))
-        else:
-            message("Радуга (50)", font_style, white, (width / 3 + 75, height / 2 + 145))
-
-        yin_status = "✅" if yin_unlocked else "❌"
-        yang_status = "✅" if yang_unlocked else "❌"
-        message(f"Инь: {yin_status}", font_style, white, (width / 3 + 75, height / 2 + 100))
-        message(f"Янь: {yang_status}", font_style, white, (width / 3 + 75, height / 2 + 115))
-
-        pygame.draw.rect(screen, yellow_medium, (10, height - 40, 100, 30))
-        message("Меню", font_style, black, (60, height - 25))
-
-        pygame.display.update()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                pygame.quit()
-                exit()
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                x, y = event.pos
-                if width / 3 <= x <= width / 3 + 150:
-                    if height / 2 - 120 <= y <= height / 2 - 70:
-                        snake_color = dark_green
-                    elif height / 2 - 60 <= y <= height / 2 - 10 and score >= 25:
-                        yin_unlocked = True
-                        snake_color = yin_color
-                        score -= 25
-                    elif height / 2 <= y <= height / 2 + 50 and score >= 25:
-                        yang_unlocked = True
-                        snake_color = yang_color
-                        score -= 25
-                    elif height / 2 + 60 <= y <= height / 2 + 110 and score >= 75 and yin_unlocked and yang_unlocked:
-                        snake_color = rainbow
-                        score -= 75
-                    elif height / 2 + 120 <= y <= height / 2 + 170 and score >= 50:
-                        snake_color = rainbow
-                        score -= 50
-                    else:
-                        print("Не хватает очков!")
-                        message("Не хватает очков!", font_style, red, (width / 2, height - 60))
-                        pygame.display.update()
-                        time.sleep(1)
-                elif 10 <= x <= 110 and height - 40 <= y <= height - 10:
-                    print("Возврат в главное меню.")
-                    return
-
-
-def game_loop():
-    global score, snake_color
-    print("Игровой цикл запущен.")
-    x, y = width / 2, height / 2
-    x_change, y_change = 0, 0
-    snake_list = []
-    length_of_snake = 1
-    foodx = round(random.randrange(0, width - block_size) / 10.0) * 10.0
-    foody = round(random.randrange(0, height - block_size) / 10.0) * 10.0
-
-    game_over = False
-    while not game_over:
-        draw_chess_board()
-        show_score()
-
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                game_over = True
-            if event.type == pygame.KEYDOWN:
-                if event.key in [pygame.K_LEFT, pygame.K_a]:  # Влево
-                    x_change = -block_size
-                    y_change = 0
-                elif event.key in [pygame.K_RIGHT, pygame.K_d]:  # Вправо
-                    x_change = block_size
-                    y_change = 0
-                elif event.key in [pygame.K_UP, pygame.K_w]:  # Вверх
-                    y_change = -block_size
-                    x_change = 0
-                elif event.key in [pygame.K_DOWN, pygame.K_s]:  # Вниз
-                    y_change = block_size
-                    x_change = 0
-
-        x += x_change
-        y += y_change
-
-        if x >= width or x < 0 or y >= height or y < 0:
+    def buy(skin, cost):
+        global score
+        if unlocked_skins[skin]:
+            messagebox.showinfo("Магазин", f"{skin} уже куплен.")
             return
+        if score >= cost:
+            score -= cost
+            unlocked_skins[skin] = True
+            messagebox.showinfo("Магазин", f"{skin} разблокирован!")
+            show_shop()
+        else:
+            messagebox.showwarning("Магазин", "Недостаточно очков!")
 
-        snake_head = [x, y]
-        snake_list.append(snake_head)
-        if len(snake_list) > length_of_snake:
-            del snake_list[0]
+    def btn(text, y, command):
+        b = canvas.create_rectangle(180, y, 420, y+35, fill="lightgray", tags="button")
+        t = canvas.create_text(300, y+17, text=text, fill="black", tags="button")
+        canvas.tag_bind(b, "<Button-1>", lambda e: command())
+        canvas.tag_bind(t, "<Button-1>", lambda e: command())
+        buttons.extend([b, t])
 
-        for block in snake_list[:-1]:
-            if block == snake_head:
-                return
+    btn("Купить Инь (50)", 80, lambda: buy("Инь", 50))
+    btn("Купить Янь (50)", 125, lambda: buy("Янь", 50))
 
-        pygame.draw.rect(screen, red, [foodx, foody, block_size, block_size])
+    cond_yin = "✅" if unlocked_skins["Инь"] else "❌"
+    cond_yang = "✅" if unlocked_skins["Янь"] else "❌"
 
-        for segment in snake_list:
-            color = snake_color if snake_color != rainbow else random.choice(rainbow)
-            pygame.draw.rect(screen, color, [segment[0], segment[1], block_size, block_size])
+    canvas.create_text(300, 180, text=f"Купить Инь-Янь (150)", font=("Arial", 12))
+    canvas.create_text(300, 205, text=f"Условие: Инь {cond_yin}, Янь {cond_yang}", font=("Arial", 10))
+    btn("Купить Инь-Янь", 230, lambda: buy("Инь-Янь", 150) if unlocked_skins["Инь"] and unlocked_skins["Янь"] else messagebox.showwarning("Магазин", "Сначала купи Инь и Янь!"))
 
-        pygame.display.update()
+    btn("Назад", 300, show_main_menu)
 
-        if x == foodx and y == foody:
-            foodx = round(random.randrange(0, width - block_size) / 10.0) * 10.0
-            foody = round(random.randrange(0, height - block_size) / 10.0) * 10.0
-            length_of_snake += 1
-            score += 1
+def show_color_select():
+    canvas.delete("all")
+    draw_checkered_background()
+    clear_buttons()
+    draw_score()
 
-        time.sleep(0.1)
+    canvas.create_text(300, 30, text="🎨 Выбор цвета", font=("Arial", 18, "bold"))
 
-    pygame.quit()
+    def btn(skin, y):
+        status = "✅" if unlocked_skins[skin] else "❌ Заблокирован"
+        b = canvas.create_rectangle(180, y, 420, y+35, fill="lightgray", tags="button")
+        t = canvas.create_text(300, y+17, text=f"{skin} ({status})", fill="black", tags="button")
 
-while True:
-    mode = main_menu()
-    if mode == "game":
-        game_loop()
-    elif mode == "shop":
-        shop()
+        def select():
+            global selected_skin
+            if unlocked_skins[skin]:
+                selected_skin = skin
+                messagebox.showinfo("Выбор цвета", f"{skin} выбран!")
+            else:
+                messagebox.showwarning("Выбор цвета", f"{skin} ещё не разблокирован.")
+
+        canvas.tag_bind(b, "<Button-1>", lambda e: select())
+        canvas.tag_bind(t, "<Button-1>", lambda e: select())
+        buttons.extend([b, t])
+
+    y = 80
+    for skin in COLORS:
+        btn(skin, y)
+        y += 45
+
+    btn("Назад", y + 10, show_main_menu)
+
+def show_achievements():
+    messagebox.showinfo("Достижения", "Пока нет достижений...")
+
+def start_game():
+    global snake, food, snake_dir, game_running
+    canvas.delete("all")
+    draw_checkered_background()
+    clear_buttons()
+    draw_score()
+    snake.clear()
+    snake.append([100, 100])
+    snake_dir = "Right"
+    spawn_food()
+    game_running = True
+    move_snake()
+
+def spawn_food():
+    global food
+    while True:
+        x = random.randint(0, (WIDTH - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
+        y = random.randint(0, (HEIGHT - BLOCK_SIZE) // BLOCK_SIZE) * BLOCK_SIZE
+        if [x, y] not in snake:
+            food = [x, y]
+            break
+
+def move_snake():
+    global score, game_running
+    if not game_running:
+        return
+
+    head = snake[-1]
+    dx, dy = 0, 0
+    if snake_dir == "Up": dy = -BLOCK_SIZE
+    elif snake_dir == "Down": dy = BLOCK_SIZE
+    elif snake_dir == "Left": dx = -BLOCK_SIZE
+    elif snake_dir == "Right": dx = BLOCK_SIZE
+
+    new_head = [head[0] + dx, head[1] + dy]
+
+    if (new_head[0] < 0 or new_head[0] >= WIDTH or
+        new_head[1] < 0 or new_head[1] >= HEIGHT or
+        new_head in snake):
+        game_running = False
+        show_main_menu()
+        return
+
+    snake.append(new_head)
+
+    if new_head == food:
+        score += 1
+        spawn_food()
+    else:
+        snake.pop(0)
+
+    canvas.delete("snake")
+    draw_checkered_background()
+    draw_score()
+    canvas.create_rectangle(food[0], food[1], food[0]+BLOCK_SIZE, food[1]+BLOCK_SIZE, fill="red", tag="snake")
+
+    for i, segment in enumerate(snake):
+        color = COLORS[selected_skin][i % 2] if selected_skin == "Инь-Янь" else COLORS[selected_skin]
+        canvas.create_rectangle(segment[0], segment[1], segment[0]+BLOCK_SIZE, segment[1]+BLOCK_SIZE, fill=color, tag="snake")
+
+    root.after(MOVE_DELAY, move_snake)
+
+def change_dir(event):
+    global snake_dir
+    key = event.keysym
+    if key in ["Up", "Down", "Left", "Right"]:
+        opposites = {"Up": "Down", "Down": "Up", "Left": "Right", "Right": "Left"}
+        if snake_dir != opposites[key]:
+            snake_dir = key
+
+root.bind("<KeyPress>", change_dir)
+show_main_menu()
+root.mainloop()
